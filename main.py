@@ -1,13 +1,18 @@
 import os
 import json
+# אין צורך ב-dotenv בסביבת הענן, אבל נשאיר למקרה של בדיקה מקומית
 from dotenv import load_dotenv
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
+# שירות requests נדרש כדי לשלוח תשובה לטלגרם
+import requests
+
 load_dotenv()
 
+# הגדרת המוח והפרומפט
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.9)
 
 script_prompt_template = """
@@ -63,11 +68,13 @@ I figured out how to [dream] and I’m gonna prove it in [time] 
 prompt = PromptTemplate(input_variables=["user_topic"], template=script_prompt_template)
 chain = LLMChain(llm=llm, prompt=prompt)
 
+
+# זו הפונקציה הראשית שתרוץ בענן
 def handle_telegram_webhook(request):
     request_json = request.get_json(silent=True)
 
     if not request_json or 'message' not in request_json:
-        return 'Invalid request', 400
+        return 'OK', 200
 
     message = request_json['message']
     chat_id = message['chat']['id']
@@ -88,12 +95,12 @@ def handle_telegram_webhook(request):
     return 'OK', 200
 
 def send_telegram_message(chat_id, text):
-    import requests
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
+    # שימוש בספריית requests שייבאנו
     requests.post(url, json=payload)
 
-# זו נקודת הכניסה שהענן יקרא לה
+# הפונקציה הזו היא נקודת הכניסה שהענן יקרא לה
 def webhook(request):
     return handle_telegram_webhook(request)
