@@ -1,21 +1,18 @@
 import os
 import json
-# אין צורך ב-dotenv בסביבת הענן, אבל נשאיר למקרה של בדיקה מקומית
-from dotenv import load_dotenv
-
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-
-# שירות requests נדרש כדי לשלוח תשובה לטלגרם
+import google.generativeai as genai
 import requests
 
+# אין צורך ב-dotenv, משתני הסביבה יגיעו מהענן
+# אבל נשאיר למקרה של הרצה מקומית בעתיד
+from dotenv import load_dotenv
 load_dotenv()
 
-# הגדרת המוח והפרומפט
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.9)
+# הגדרת המפתח של גוגל מהמשתנים הסביבתיים
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-script_prompt_template = """
+# הפרומפט המדויק שלך נשאר זהה
+PROMPT_TEMPLATE = """
 # התפקיד (Role): אתה צוות המורכב מתסריטאי-סטוריטלר חד עין ואיש שיווק אסטרטגי. התפקיד שלך הוא לתרגם חוויות רגשיות עמוקות לתסריטים קצרים, מהדהדים ומניעים לפעולה עבור סרטוני רילס. הטון שלך ישיר, "דוגרי", נטול קלישאות, ומכבד את האינטליגנציה של הצופה. 
 # המשימה (The Task): כתוב 5 (חמישה) תסריטים שונים וחדשים על בסיס הנושא שיוגדר בסוף הפרומפט. כל תסריט צריך להיות עצמאי ומלא. 
 # קהל היעד (The Avatar): התסריטים פונים ליזמים, מנהלים ויוצרי תוכן שאפתניים ובעלי הישגים, שמרגישים פער כואב בין המומחיות שלהם לבין היכולת שלהם לבטא אותה בביטחון. הם חווים תסכול, חרדה, ותחושה שהם לא מממשים את הפוטנציאל שלהם. 
@@ -65,12 +62,17 @@ I figured out how to [dream] and I’m gonna prove it in [time] 
 {user_topic}
 """
 
-prompt = PromptTemplate(input_variables=["user_topic"], template=script_prompt_template)
-chain = LLMChain(llm=llm, prompt=prompt)
+def generate_script_from_topic(user_topic):
+    """Generates a script using the Gemini model directly."""
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    # יצירת הפרומפט המלא
+    full_prompt = PROMPT_TEMPLATE.format(user_topic=user_topic)
+    # שליחת הבקשה למודל
+    response = model.generate_content(full_prompt)
+    return response.text
 
-
-# זו הפונקציה הראשית שתרוץ בענן
 def handle_telegram_webhook(request):
+    """Processes incoming requests from Telegram."""
     request_json = request.get_json(silent=True)
 
     if not request_json or 'message' not in request_json:
@@ -87,20 +89,21 @@ def handle_telegram_webhook(request):
             return 'OK', 200
 
         try:
-            response = chain.invoke({"user_topic": user_topic})
-            send_telegram_message(chat_id, response['text'])
+            # קריאה לפונקציה החדשה שלנו
+            script_text = generate_script_from_topic(user_topic)
+            send_telegram_message(chat_id, script_text)
         except Exception as e:
             send_telegram_message(chat_id, f"אוי, משהו השתבש: {e}")
 
     return 'OK', 200
 
 def send_telegram_message(chat_id, text):
+    """Sends a message back to the user via Telegram Bot API."""
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
-    # שימוש בספריית requests שייבאנו
     requests.post(url, json=payload)
 
-# הפונקציה הזו היא נקודת הכניסה שהענן יקרא לה
 def webhook(request):
+    """Entry point for Google Cloud Functions."""
     return handle_telegram_webhook(request)
